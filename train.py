@@ -46,6 +46,8 @@ if __name__ == '__main__':
    exp_info = dict()
    exp_info['NETWORK']   = NETWORK
    exp_info['AUGMENT']   = AUGMENT
+   exp_info['L1_WEIGHT'] = L1_WEIGHT
+   exp_info['NOISE']     = NOISE
    exp_pkl = open(EXPERIMENT_DIR+'info.pkl', 'wb')
    data = pickle.dumps(exp_info)
    exp_pkl.write(data)
@@ -83,12 +85,15 @@ if __name__ == '__main__':
    # full image
    lab_images = tf.concat([L_image, ab_image], axis=3)
 
+   # possible noise to the generator - maybe it'll vary the output
+   z = tf.placeholder(tf.float32, shape=(BATCH_SIZE, 256, 256, 1), name='z')
+
    '''
       generated ab values from generator given the lightness.
       D_real is giving the discriminator real distorted images.
       D_fake is giving the discriminator generated distorted images.
    '''
-   gen_ab = netG(L_image)
+   gen_ab = netG(L_image, z, NOISE)
    D_real = netD(L_image, ab_image)
    D_fake = netD(L_image, gen_ab, reuse=True)
 
@@ -178,7 +183,9 @@ if __name__ == '__main__':
 
          #batchND_L_images  = np.empty((BATCH_SIZE, 256, 256, 1), dtype=np.float32)
          #batchND_ab_images = np.empty((BATCH_SIZE, 256, 256, 2), dtype=np.float32)
-         
+
+         batch_z = np.random.normal(-1.0, 1.0, size=[BATCH_SIZE, 256,256,1]).astype(np.float32)
+
          i = 0
          #for d,nd in zip(batchD_paths, batchND_paths):
          for d in batchD_paths:
@@ -209,12 +216,12 @@ if __name__ == '__main__':
             batchD_ab_images[i, ...] = img_d_ab
             i+=1
 
-         sess.run(D_train_op, feed_dict={L_image:batchD_L_images, ab_image:batchD_ab_images})
-      sess.run(G_train_op, feed_dict={L_image:batchD_L_images, ab_image:batchD_ab_images})
+         sess.run(D_train_op, feed_dict={L_image:batchD_L_images, ab_image:batchD_ab_images,z:batch_z})
+      sess.run(G_train_op, feed_dict={L_image:batchD_L_images, ab_image:batchD_ab_images,z:batch_z})
 
       # get loss without gradient update
-      D_loss, G_loss, summary = sess.run([errD, errG, merged_summary_op], feed_dict={L_image:batchD_L_images, ab_image:batchD_ab_images})
-      print 'step:',step,'D_loss:',D_loss,'G_loss:',G_loss
+      D_loss, G_loss, summary = sess.run([errD, errG, merged_summary_op], feed_dict={L_image:batchD_L_images, ab_image:batchD_ab_images,z:batch_z})
+      print 'epoch:',epoch_num,'step:',step,'D_loss:',D_loss,'G_loss:',G_loss
 
       step += 1
 
@@ -231,6 +238,8 @@ if __name__ == '__main__':
          batchND_paths     = nondistorted_paths[idx_nd]
          batchND_L_images  = np.empty((BATCH_SIZE, 256, 256, 1), dtype=np.float64)
          batchND_ab_images = np.empty((BATCH_SIZE, 256, 256, 2), dtype=np.float64)
+            
+         batch_z = np.random.normal(-1.0, 1.0, size=[BATCH_SIZE, 256,256,1]).astype(np.float32)
 
          j = 0
          for nd in batchND_paths:
@@ -246,7 +255,7 @@ if __name__ == '__main__':
             batchND_ab_images[j, ...] = img_nd_ab
             j+=1
 
-         generated_ab = sess.run(gen_ab, feed_dict={L_image:batchND_L_images})
+         generated_ab = sess.run(gen_ab, feed_dict={L_image:batchND_L_images, z:batch_z})
 
          counter = 0
          for real_ab, ab_gen_, real_L in zip(batchND_ab_images, generated_ab, batchND_L_images):
@@ -263,9 +272,9 @@ if __name__ == '__main__':
             rgb_out = np.clip(rgb_out, -128, 128)
 
             real_img = color.lab2rgb(real_img)
-            misc.imsave(IMAGES_DIR+str(step)+'_real.png', real_img)
+            misc.imsave(IMAGES_DIR+str(step)+'_'+str(counter)+'_real.png', real_img)
             rgb_out  = color.lab2rgb(rgb_out)
-            misc.imsave(IMAGES_DIR+str(step)+'_gen.png', rgb_out)
+            misc.imsave(IMAGES_DIR+str(step)+'_'+str(counter)+'_gen.png', rgb_out)
 
             counter += 1
 
